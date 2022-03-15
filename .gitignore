@@ -1,0 +1,13 @@
+# data
+audio.001
+essentia-models
+data/annotations-spotifyapi.001
+
+# cache
+*.pyc
+__pycache__/
+.DS_Store
+
+# misc
+README.html
+notes
