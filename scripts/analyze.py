@@ -26,6 +26,9 @@ SPOTIFY_ANNOTATIONS_DIR = os.path.join(DATA_DIR, "annotations-spotifyapi.001")
 SPOTIFY_PREDICTIONS_PATH = os.path.join(DATA_DIR, "spotify-predictions.csv")
 ESSENTIA_PREDICTIONS_PATH = os.path.join(DATA_DIR, "essentia-models-predictions.csv")
 AGREEMENT_STATS_PATH = os.path.join(OUTPUT_DIR, "agreements-by-model.csv")
+CONSISTENT_AGREEMENT_STATS_PATH = os.path.join(
+    OUTPUT_DIR, "agreements-by-model-consistent.csv"
+)
 PAIR_AGREEMENTS_PATH = os.path.join(OUTPUT_DIR, "pair-agreements.csv")
 
 # Valence/arousal predictions can have 6 significant figures
@@ -138,6 +141,109 @@ def get_higher(a, b, measure):
     return higher
 
 
+def get_inconsistent_measure(
+    a_id, b_id, higher, order, triplet_id, inconsistent_triplets
+):
+    def add_to_sublist(el, ref_el, arr):
+        ref_ix = get_sublist_index(ref_el, arr)
+        arr[ref_ix].append(el)
+        return arr
+
+    def add_after_sublist(el, ref_el, arr):
+        ref_ix = get_sublist_index(ref_el, arr)
+        if ref_ix == len(arr) - 1:
+            arr.append([el])
+        else:
+            arr[ref_ix + 1].append(el)
+        return arr
+
+    def add_before_sublist(el, ref_el, arr):
+        ref_ix = get_sublist_index(ref_el, arr)
+        if ref_ix == 0:
+            arr.insert(0, [el])
+        else:
+            arr[ref_ix - 1].append(el)
+        return arr
+
+    def get_sublist_index(el, arr):
+        for ix, sublist in enumerate(arr):
+            if el in sublist:
+                return ix
+        return -1
+
+    if not order:
+        order.append([a_id])
+
+    if get_sublist_index(a_id, order) == -1:
+        if higher == "a":
+            order = add_after_sublist(a_id, b_id, order)
+        elif higher == "b":
+            order = add_before_sublist(a_id, b_id, order)
+        elif higher == "equivalent":
+            order = add_to_sublist(a_id, b_id, order)
+
+    if get_sublist_index(b_id, order) > -1:
+        a_ix = get_sublist_index(a_id, order)
+        b_ix = get_sublist_index(b_id, order)
+
+        if higher == "b" and a_ix > b_ix:
+            inconsistent_triplets.append(triplet_id)
+        elif higher == "a" and a_ix < b_ix:
+            inconsistent_triplets.append(triplet_id)
+
+    else:
+        if higher == "a":
+            order = add_before_sublist(b_id, a_id, order)
+        elif higher == "b":
+            order = add_after_sublist(b_id, a_id, order)
+        elif higher == "equivalent":
+            order = add_to_sublist(b_id, a_id, order)
+
+    return order, inconsistent_triplets
+
+
+def get_inconsistent_triplets(df):
+    """Find inconsistent triplets.
+
+    Returns cases where (A > B, B > C, A < C) or (A < B, B < C, A > C)
+    for either valence or arousal.
+    """
+    inconsistent_arousals = []
+    inconsistent_valences = []
+
+    seen_triplet_ids = []
+
+    for gt_ix, gt_row in df.iterrows():
+        triplet_id = gt_row["triplet_id"]
+
+        if triplet_id in seen_triplet_ids:
+            continue
+
+        seen_triplet_ids.append(triplet_id)
+
+        triplet_df = df[df["triplet_id"] == triplet_id]
+        assert len(triplet_df) == 3
+
+        arousal_order = []
+        valence_order = []
+
+        for t_ix, t_row in triplet_df.iterrows():
+            a_id = t_row["a_id"]
+            b_id = t_row["b_id"]
+            ha = t_row["higher_arousal"]
+            hv = t_row["higher_valence"]
+
+            arousal_order, inconsistent_arousals = get_inconsistent_measure(
+                a_id, b_id, ha, arousal_order, triplet_id, inconsistent_arousals
+            )
+
+            valence_order, inconsistent_valences = get_inconsistent_measure(
+                a_id, b_id, hv, valence_order, triplet_id, inconsistent_valences
+            )
+
+    return inconsistent_arousals, inconsistent_valences
+
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
@@ -211,3 +317,31 @@ if __name__ == "__main__":
     pair_agreements = ground_truth_df.join(agreement_df)
     pair_agreements.to_csv(PAIR_AGREEMENTS_PATH)
     print(f"Wrote pair agreements to {PAIR_AGREEMENTS_PATH}")
+
+    print("Finding inconsistencies...")
+    inconsistent_arousals, inconsistent_valences = get_inconsistent_triplets(
+        ground_truth_df
+    )
+    print(f"  Found {len(inconsistent_arousals)} inconsitent triplet(s) in arousal")
+    print(f"  Found {len(inconsistent_valences)} inconsitent triplet(s) in valence")
+
+    # Remove inconsitent triplets and recalculate agreement stats
+    inconsistent_triplets_ids = set(inconsistent_arousals).union(
+        set(inconsistent_valences)
+    )
+    agreement_df["triplet_id"] = [i[:32] for i in agreement_df.index]
+    agreement_df_consistent = agreement_df[
+        ~agreement_df["triplet_id"].isin(inconsistent_triplets_ids)
+    ]
+    agreement_df_consistent = agreement_df_consistent.drop("triplet_id", axis=1)
+
+    n_pairs_consistent = len(agreement_df_consistent)
+    agreement_consistent = (agreement_df_consistent.sum() / n_pairs_consistent).apply(
+        lambda x: round(x, 2)
+    )
+    agreement_consistent.to_csv(
+        CONSISTENT_AGREEMENT_STATS_PATH, header=["pct_agreement"]
+    )
+    print(f"For {n_pairs_consistent} consistent pairs")
+    print(agreement_consistent)
+    print(f"Wrote consistent agreement stats to {CONSISTENT_AGREEMENT_STATS_PATH}")
