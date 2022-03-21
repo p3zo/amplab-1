@@ -1,5 +1,4 @@
 import pandas as pd
-
 from analyze import get_inconsistent_triplets
 
 

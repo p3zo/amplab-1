@@ -25,11 +25,14 @@ GROUND_TRUTH_ANNOTATIONS_PATH = os.path.join(DATA_DIR, "ground-truth-annotations
 SPOTIFY_ANNOTATIONS_DIR = os.path.join(DATA_DIR, "annotations-spotifyapi.001")
 SPOTIFY_PREDICTIONS_PATH = os.path.join(DATA_DIR, "spotify-predictions.csv")
 ESSENTIA_PREDICTIONS_PATH = os.path.join(DATA_DIR, "essentia-models-predictions.csv")
-AGREEMENT_STATS_PATH = os.path.join(OUTPUT_DIR, "agreements-by-model.csv")
-CONSISTENT_AGREEMENT_STATS_PATH = os.path.join(
-    OUTPUT_DIR, "agreements-by-model-consistent.csv"
+PAIR_AGREEMENT_STATS_PATH = os.path.join(OUTPUT_DIR, "pairwise-agreements-by-model.csv")
+CONSISTENT_AROUSAL_PAIR_AGREEMENT_STATS_PATH = os.path.join(
+    OUTPUT_DIR, "pairwise-agreements-by-model-consistent-arousal.csv"
 )
-PAIR_AGREEMENTS_PATH = os.path.join(OUTPUT_DIR, "pair-agreements.csv")
+CONSISTENT_VALENCE_PAIR_AGREEMENT_STATS_PATH = os.path.join(
+    OUTPUT_DIR, "pairwise-agreements-by-model-consistent-valence.csv"
+)
+PAIR_AGREEMENTS_PATH = os.path.join(OUTPUT_DIR, "pairwise-agreements.csv")
 
 # Valence/arousal predictions can have 6 significant figures
 # Define a tolerance within which to call them equal
@@ -273,7 +276,7 @@ if __name__ == "__main__":
         [spotify_df, ded_df, dmm_df, dva_df, eed_df, emm_df, eva_df]
     )
 
-    # Compare agreement between each model & ground truth
+    # Compare pairwise agreement between each model & ground truth
     agreement_df = pd.DataFrame()
     for gt_ix, gt_row in ground_truth_df.iterrows():
         arousal_agreements = {model: 0 for model in all_model_df.model.unique()}
@@ -311,15 +314,15 @@ if __name__ == "__main__":
     n_pairs = len(agreement_df)
 
     agreement = (agreement_df.sum() / n_pairs).apply(lambda x: round(x, 2))
-    agreement.to_csv(AGREEMENT_STATS_PATH, header=["pct_agreement"])
+    agreement.to_csv(PAIR_AGREEMENT_STATS_PATH, header=["pct_agreement"])
 
-    print(f"For {n_pairs} pairs")
+    print(f"{n_pairs} pairs")
     print(agreement)
-    print(f"Wrote agreement stats to {AGREEMENT_STATS_PATH}")
+    print(f"Wrote pairwise agreement stats to {PAIR_AGREEMENT_STATS_PATH}")
 
     pair_agreements = ground_truth_df.join(agreement_df)
     pair_agreements.to_csv(PAIR_AGREEMENTS_PATH)
-    print(f"Wrote pair agreements to {PAIR_AGREEMENTS_PATH}")
+    print(f"Wrote pairwise agreements to {PAIR_AGREEMENTS_PATH}")
 
     print("Finding inconsistencies...")
     inconsistent_arousals, inconsistent_valences = get_inconsistent_triplets(
@@ -329,22 +332,44 @@ if __name__ == "__main__":
     print(f"  Found {len(inconsistent_valences)} inconsitent triplet(s) in valence")
 
     # Remove inconsitent triplets and recalculate agreement stats
-    inconsistent_triplets_ids = set(inconsistent_arousals).union(
-        set(inconsistent_valences)
-    )
     agreement_df["triplet_id"] = [i[:32] for i in agreement_df.index]
-    agreement_df_consistent = agreement_df[
-        ~agreement_df["triplet_id"].isin(inconsistent_triplets_ids)
-    ]
-    agreement_df_consistent = agreement_df_consistent.drop("triplet_id", axis=1)
 
-    n_pairs_consistent = len(agreement_df_consistent)
-    agreement_consistent = (agreement_df_consistent.sum() / n_pairs_consistent).apply(
-        lambda x: round(x, 2)
+    agreement_df_consistent_arousal = agreement_df[
+        ~agreement_df["triplet_id"].isin(inconsistent_arousals)
+    ]
+    agreement_df_consistent_arousal = agreement_df_consistent_arousal.drop(
+        "triplet_id", axis=1
     )
-    agreement_consistent.to_csv(
-        CONSISTENT_AGREEMENT_STATS_PATH, header=["pct_agreement"]
+
+    n_pairs_consistent_arousal = len(agreement_df_consistent_arousal)
+    agreement_consistent_arousal = (
+        agreement_df_consistent_arousal.sum() / n_pairs_consistent_arousal
+    ).apply(lambda x: round(x, 2))
+    agreement_consistent_arousal.to_csv(
+        CONSISTENT_AROUSAL_PAIR_AGREEMENT_STATS_PATH, header=["pct_agreement"]
     )
-    print(f"For {n_pairs_consistent} consistent pairs")
-    print(agreement_consistent)
-    print(f"Wrote consistent agreement stats to {CONSISTENT_AGREEMENT_STATS_PATH}")
+    print(f"{n_pairs_consistent_arousal} pairs consistent in arousal")
+    print(agreement_consistent_arousal)
+    print(
+        f"Wrote pairwise agreement (consistent arousal) stats to {CONSISTENT_AROUSAL_PAIR_AGREEMENT_STATS_PATH}"
+    )
+
+    agreement_df_consistent_valence = agreement_df[
+        ~agreement_df["triplet_id"].isin(inconsistent_valences)
+    ]
+    agreement_df_consistent_valence = agreement_df_consistent_valence.drop(
+        "triplet_id", axis=1
+    )
+
+    n_pairs_consistent_valence = len(agreement_df_consistent_valence)
+    agreement_consistent_valence = (
+        agreement_df_consistent_valence.sum() / n_pairs_consistent_valence
+    ).apply(lambda x: round(x, 2))
+    agreement_consistent_valence.to_csv(
+        CONSISTENT_VALENCE_PAIR_AGREEMENT_STATS_PATH, header=["pct_agreement"]
+    )
+    print(f"{n_pairs_consistent_valence} pairs consistent in valence")
+    print(agreement_consistent_valence)
+    print(
+        f"Wrote pairwise agreement (consistent valence) stats to {CONSISTENT_VALENCE_PAIR_AGREEMENT_STATS_PATH}"
+    )
