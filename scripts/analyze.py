@@ -76,6 +76,9 @@ def load_ground_truth_annotations():
         triplets_no_valence.values
     )
 
+    # Hard-code a triplet ID which contains a pair of duplicates (same song, different Spotify IDs)
+    triplet_ids_to_drop.add("1b02f828d27049dfbae3caed2011ed46")
+
     df = df[~df["triplet_id"].isin(triplet_ids_to_drop)]
 
     return df
