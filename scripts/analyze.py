@@ -59,7 +59,23 @@ def create_ground_truth_annotation_csv():
 def load_ground_truth_annotations():
     """Load annotations parsed by `create_ground_truth_annotation_csv()`"""
     df = pd.read_csv(GROUND_TRUTH_ANNOTATIONS_PATH)
-    return df.set_index("pairid", drop=True)
+
+    df["triplet_id"] = df["pairid"].apply(lambda x: x[:32])
+
+    df = df.set_index("pairid", drop=True)
+
+    # Drop triplets that have any pair with a `not_selected` annotation
+    # These are non-music tracks, like speech or noise
+    triplets_no_arousal = df[df["higher_arousal"] == "not_selected"]["triplet_id"]
+    triplets_no_valence = df[df["higher_valence"] == "not_selected"]["triplet_id"]
+
+    triplet_ids_to_drop = set(triplets_no_arousal.values).union(
+        triplets_no_valence.values
+    )
+
+    df = df[~df["triplet_id"].isin(triplet_ids_to_drop)]
+
+    return df
 
 
 def create_spotify_annotation_csv():
