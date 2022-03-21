@@ -1,7 +1,7 @@
 """
 Predict arousal/valence of audio using six pre-trained, transfer-learning models.
 
-Models were trained on on two datasets (DEAM, EmoMusic) using three types of deep
+Models were trained on two datasets (DEAM, EmoMusic) using three types of deep
 embeddings available in Essentia (MusiCNN-MSD, VGGish-AudioSet, Effnet-Discogs).
 """
 
@@ -16,6 +16,7 @@ from constants import AUDIO_DIR, DATA_DIR, MODELS_DIR
 from essentia.standard import (
     MonoLoader,
     TensorflowPredict,
+    TensorflowPredictEffnetDiscogs,
     TensorflowPredictMusiCNN,
     TensorflowPredictVGGish,
 )
@@ -49,14 +50,20 @@ def load_effnet_discogs_embeddings_model():
     # whereas MusiCNN applies 1.5-seconds (93 * 256/ 16000 ≈ 1.5)
     patch_hop_size = patch_size // 2
 
+    # Although Effnet-Discogs was published recently in
+    # https://essentia.upf.edu/models/music-style-classification/discogs-effnet/
+    # deam-effnet-discogs-1 model was trained with a previous version.
+    # NOTE: The embedding size and the layer names differ among versions.
+
     input_layer = "melspectrogram"
     output_layer = "onnx_tf_prefix_BatchNormalization_496/add_1"
 
     # Instantiate the embeddings model
-    return TensorflowPredictMusiCNN(
+    return TensorflowPredictEffnetDiscogs(
         graphFilename=EFFNET_DISCOGS_MODEL_PATH,
         input=input_layer,
         output=output_layer,
+        patchSize=patch_size,
         patchHopSize=patch_hop_size,
     )
 
@@ -282,7 +289,7 @@ if __name__ == "__main__":
             columns=["valence", "arousal"],
         )
 
-        pred_df["model_name"] = ["ded", "dmm", "dva", "eed", "emm", "eva"]
+        pred_df["model"] = ["ded", "dmm", "dva", "eed", "emm", "eva"]
         pred_df["trackid"] = os.path.splitext(os.path.basename(audio_path))[0]
 
         predictions_df = pd.concat([predictions_df, pred_df])
